@@ -1,0 +1,56 @@
+{
+  "naming_schema": "{date} - {category} - {type} - {company} {doc_type}.pdf",
+  "categories": {
+    "business": {
+      "base": "~/Documents/Business",
+      "patterns": ["My Company GmbH", "Business Address"],
+      "subcategories": {
+        "accounting": {
+          "path": "Accounting/{year}",
+          "doc_types": ["Invoice", "Receipt"]
+        },
+        "insurance": {
+          "path": "Insurance",
+          "doc_types": ["Policy", "Certificate"]
+        }
+      }
+    },
+    "personal": {
+      "base": "~/Documents/Personal",
+      "patterns": ["John Doe", "Home Address"],
+      "subcategories": {
+        "insurance": {
+          "path": "Insurance",
+          "doc_types": ["Policy", "Certificate"]
+        },
+        "health": {
+          "path": "Insurance/Health",
+          "doc_types": ["Claim", "Reimbursement"]
+        },
+        "taxes": {
+          "path": "Finance/Taxes",
+          "doc_types": ["Assessment", "Payslip"]
+        }
+      }
+    }
+  },
+  "companies": {
+    "Example Insurance": {
+      "patterns": ["Example Insurance Co", "Policy Number 12345"],
+      "category": "personal",
+      "subcategory": "insurance"
+    },
+    "Example Provider": {
+      "patterns": ["Example Provider Inc", "Customer ID"],
+      "category": "business",
+      "subcategory": "accounting"
+    }
+  },
+  "doc_type_patterns": {
+    "Invoice": ["Invoice", "Rechnungsnummer", "Bill"],
+    "Policy": ["Policy", "Insurance Certificate", "Coverage"],
+    "Claim": ["Claim", "Reimbursement", "Settlement"],
+    "Receipt": ["Receipt", "Quittung", "Payment Confirmation"],
+    "Statement": ["Statement", "Account Summary", "Balance"]
+  }
+}

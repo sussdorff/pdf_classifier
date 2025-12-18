@@ -1,0 +1,20 @@
+[project]
+name = "pdf-classifier"
+version = "0.1.0"
+description = "Intelligent PDF classifier with OCR support"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pypdf>=4.0.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.scripts]
+pdf-classifier = "pdf_classifier.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdf_classifier"]
