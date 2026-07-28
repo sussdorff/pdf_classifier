@@ -1,0 +1,49 @@
+#!/usr/bin/env sh
+
+# >>> mira hook (managed by scripts/dev/install-git-hooks.sh) >>>
+# Guard added manually: this hook is installed GLOBALLY via core.hooksPath, so
+# it fires in every repository on this machine -- but scripts/dev/sync-deps.sh
+# exists only in mira. Without this check the hook fails everywhere else, which
+# made every `git clone` return non-zero and broke `library sync` entirely
+# (CL-k33k). No-op where the script is absent; unchanged inside mira.
+_hook_script="$(git rev-parse --show-toplevel 2>/dev/null)/scripts/dev/sync-deps.sh"
+[ -f "$_hook_script" ] || exit 0
+bash "$_hook_script" post-merge "$@"
+# <<< mira hook <<<
+
+# >>> mira deps-sync (managed by scripts/dev/install-git-hooks.sh) >>>
+repo_root="$(git rev-parse --show-toplevel)"; script="$repo_root/scripts/dev/sync-deps.sh"; [ ! -x "$script" ] || bash "$script" post-merge "$@"
+# <<< mira deps-sync <<<
+
+# --- BEGIN BEADS INTEGRATION v1.1.2 ---
+# This section is managed by beads. Do not remove these markers.
+if command -v bd >/dev/null 2>&1; then
+  export BD_GIT_HOOK=1
+  _bd_timeout=${BEADS_HOOK_TIMEOUT:-300}
+  _bd_used_perl=0
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_bd_timeout" bd hooks run post-merge "$@"
+    _bd_exit=$?
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$_bd_timeout" bd hooks run post-merge "$@"
+    _bd_exit=$?
+  elif command -v perl >/dev/null 2>&1; then
+    _bd_used_perl=1
+    perl -e 'alarm shift; exec @ARGV' "$_bd_timeout" bd hooks run post-merge "$@"
+    _bd_exit=$?
+  else
+    echo >&2 "beads: hook 'post-merge' running without timeout; install coreutils or perl to enable BEADS_HOOK_TIMEOUT"
+    bd hooks run post-merge "$@"
+    _bd_exit=$?
+  fi
+  if [ $_bd_exit -eq 124 ] || { [ $_bd_used_perl -eq 1 ] && [ $_bd_exit -eq 142 ]; }; then
+    echo >&2 "beads: hook 'post-merge' timed out after ${_bd_timeout}s — continuing without beads"
+    _bd_exit=0
+  fi
+  if [ $_bd_exit -eq 3 ]; then
+    echo >&2 "beads: database not initialized — skipping hook 'post-merge'"
+    _bd_exit=0
+  fi
+  if [ $_bd_exit -ne 0 ]; then exit $_bd_exit; fi
+fi
+# --- END BEADS INTEGRATION v1.1.2 ---
