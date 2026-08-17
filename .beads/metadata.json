@@ -1,7 +1,7 @@
 {
   "database": "dolt",
   "backend": "dolt",
-  "dolt_mode": "server",
+  "dolt_mode": "embedded",
   "dolt_database": "beads_pdf_classifier",
   "project_id": "652fdda5-198c-41f5-b462-92a85683438f",
   "global_dolt_database": "beads_global",

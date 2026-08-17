@@ -66,3 +66,6 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 sync.remote: "https://dolt.cognovis.de/beads_pdf_classifier"
+# Repo-local embedded Dolt engine instead of the shared server.
+# The Dolt remote above stays the cross-machine sync path.
+dolt.shared-server: false
