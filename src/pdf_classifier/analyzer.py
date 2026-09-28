@@ -1,6 +1,8 @@
 """Semantic document analyzer using Claude Code CLI (Max Plan)."""
 
 import json
+import os
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import date
@@ -29,6 +31,102 @@ def load_rules(rules_path: Path | None = None) -> dict:
 
     with open(rules_path) as f:
         return json.load(f)
+
+
+def get_allowed_base_paths(rules: dict) -> set[str]:
+    """Extract all allowed base paths from rules configuration."""
+    allowed = set()
+    for category_info in rules.get("categories", {}).values():
+        base = category_info.get("base", "")
+        if base:
+            # Expand ~ and resolve to absolute path
+            expanded = os.path.expanduser(base)
+            allowed.add(Path(expanded).resolve().as_posix())
+    return allowed
+
+
+def validate_destination(destination: str, rules: dict) -> bool:
+    """
+    Validate that destination path is under an allowed base path from rules.
+
+    Returns True if destination is safe, False otherwise.
+    """
+    allowed_bases = get_allowed_base_paths(rules)
+    if not allowed_bases:
+        return False
+
+    # Expand and resolve the destination
+    expanded = os.path.expanduser(destination)
+    resolved = Path(expanded).resolve().as_posix()
+
+    # Check if destination is under any allowed base path
+    for base in allowed_bases:
+        if resolved.startswith(base + "/") or resolved == base:
+            return True
+    return False
+
+
+def sanitize_filename_component(value: str) -> str:
+    """
+    Sanitize a single component of a filename.
+
+    Removes path separators, path traversal sequences, and other dangerous characters.
+    """
+    if not value:
+        return "Unknown"
+
+    # Remove path separators and null bytes
+    sanitized = value.replace("/", "_").replace("\\", "_").replace("\x00", "")
+
+    # Remove path traversal sequences (.. anywhere in string)
+    sanitized = sanitized.replace("..", "")
+
+    # Remove other potentially problematic characters
+    sanitized = re.sub(r'[<>:"|?*]', "_", sanitized)
+
+    # Remove leading/trailing dots and spaces
+    sanitized = sanitized.strip(". ")
+
+    # Collapse multiple underscores
+    sanitized = re.sub(r"_+", "_", sanitized)
+
+    # Limit length
+    if len(sanitized) > 100:
+        sanitized = sanitized[:100]
+
+    return sanitized if sanitized else "Unknown"
+
+
+def validate_ai_response(parsed: dict) -> tuple[bool, str]:
+    """
+    Validate the structure and content of AI response.
+
+    Returns (is_valid, error_message).
+    """
+    required_fields = ["category", "subcategory", "company", "doc_type"]
+    for field in required_fields:
+        if field not in parsed:
+            return False, f"Missing required field: {field}"
+
+    # Validate date format if present
+    doc_date = parsed.get("doc_date", "")
+    if doc_date:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", doc_date):
+            return False, f"Invalid date format: {doc_date}"
+        # Basic date validation
+        try:
+            year, month, day = map(int, doc_date.split("-"))
+            if not (1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31):
+                return False, f"Invalid date values: {doc_date}"
+        except ValueError:
+            return False, f"Invalid date: {doc_date}"
+
+    # Validate confidence
+    confidence = parsed.get("confidence", "medium")
+    if confidence not in ("high", "medium", "low"):
+        parsed["confidence"] = "medium"  # Default to medium if invalid
+
+    return True, ""
 
 
 def analyze_document(text: str, filename: str, rules: dict | None = None) -> ClassificationResult:
@@ -126,19 +224,29 @@ NUR JSON ausgeben!"""
 
         parsed = json.loads(response_text)
     except json.JSONDecodeError as e:
-        return _fallback_result(filename, f"JSON parsing failed: {e}\nResponse: {response_text[:200]}")
+        return _fallback_result(filename, rules, f"JSON parsing failed: {e}\nResponse: {response_text[:200]}")
+
+    # Validate AI response structure
+    is_valid, error_msg = validate_ai_response(parsed)
+    if not is_valid:
+        return _fallback_result(filename, rules, f"Invalid AI response: {error_msg}")
 
     # Build destination path
     destination = _build_destination(parsed, rules)
+
+    # Validate destination is under allowed paths
+    if not validate_destination(destination, rules):
+        return _fallback_result(filename, rules, f"Destination path not allowed: {destination}")
+
     new_filename = _build_filename(parsed)
 
     return ClassificationResult(
-        category=parsed.get("category", "unknown"),
-        subcategory=parsed.get("subcategory", "unknown"),
-        company=parsed.get("company", "Unknown"),
-        doc_type=parsed.get("doc_type", "Dokument"),
+        category=sanitize_filename_component(parsed.get("category", "unknown")),
+        subcategory=sanitize_filename_component(parsed.get("subcategory", "unknown")),
+        company=sanitize_filename_component(parsed.get("company", "Unknown")),
+        doc_type=sanitize_filename_component(parsed.get("doc_type", "Dokument")),
         doc_date=parsed.get("doc_date", date.today().isoformat()),
-        title=parsed.get("title", "Dokument"),
+        title=sanitize_filename_component(parsed.get("title", "Dokument")),
         destination=destination,
         new_filename=new_filename,
         confidence=parsed.get("confidence", "medium"),
@@ -146,8 +254,18 @@ NUR JSON ausgeben!"""
     )
 
 
-def _fallback_result(filename: str, reason: str) -> ClassificationResult:
+def _fallback_result(filename: str, rules: dict, reason: str) -> ClassificationResult:
     """Return a fallback result when classification fails."""
+    # Use first available base path from rules, or safe default
+    fallback_dest = "~/Documents/Scans"
+    allowed_bases = get_allowed_base_paths(rules) if rules else set()
+    if allowed_bases:
+        # Use first allowed base path
+        fallback_dest = next(iter(allowed_bases))
+
+    # Sanitize the original filename
+    safe_filename = sanitize_filename_component(Path(filename).stem) + ".pdf"
+
     return ClassificationResult(
         category="unknown",
         subcategory="unknown",
@@ -155,8 +273,8 @@ def _fallback_result(filename: str, reason: str) -> ClassificationResult:
         doc_type="Dokument",
         doc_date=date.today().isoformat(),
         title="Unklassifiziert",
-        destination="~/Documents/Scans",
-        new_filename=filename,
+        destination=fallback_dest,
+        new_filename=safe_filename,
         confidence="low",
         reasoning=reason
     )
@@ -199,11 +317,23 @@ def _build_destination(parsed: dict, rules: dict) -> str:
 
 
 def _build_filename(parsed: dict) -> str:
-    """Build the new filename from parsed classification."""
+    """Build the new filename from parsed classification with sanitized components."""
     doc_date = parsed.get("doc_date", date.today().isoformat())
-    category = parsed.get("category", "unknown").replace("_", " ")
-    subcategory = parsed.get("subcategory", "unknown").replace("_", " ")
-    company = parsed.get("company", "Unknown")
-    title = parsed.get("title", "Dokument")
 
-    return f"{doc_date} - {category} - {subcategory} - {company} {title}.pdf"
+    # Validate date format for filename safety
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", doc_date):
+        doc_date = date.today().isoformat()
+
+    # Sanitize all user-controlled components
+    category = sanitize_filename_component(parsed.get("category", "unknown")).replace("_", " ")
+    subcategory = sanitize_filename_component(parsed.get("subcategory", "unknown")).replace("_", " ")
+    company = sanitize_filename_component(parsed.get("company", "Unknown"))
+    title = sanitize_filename_component(parsed.get("title", "Dokument"))
+
+    filename = f"{doc_date} - {category} - {subcategory} - {company} {title}.pdf"
+
+    # Final safety check - ensure no path separators in result
+    if "/" in filename or "\\" in filename:
+        filename = filename.replace("/", "_").replace("\\", "_")
+
+    return filename

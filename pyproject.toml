@@ -9,6 +9,11 @@ dependencies = [
     "python-dateutil>=2.8.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [project.scripts]
 pdf-classifier = "pdf_classifier.cli:main"
 

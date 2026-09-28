@@ -7,8 +7,22 @@ import shutil
 import sys
 from pathlib import Path
 
-from .analyzer import analyze_document, load_rules
+from .analyzer import analyze_document, load_rules, validate_destination
 from .ocr import extract_text, needs_ocr, run_ocr
+
+
+def is_valid_pdf(file_path: Path) -> bool:
+    """
+    Validate that a file is actually a PDF by checking magic bytes.
+
+    PDF files start with "%PDF-" (hex: 25 50 44 46 2D).
+    """
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(5)
+            return header == b"%PDF-"
+    except (OSError, IOError):
+        return False
 
 
 def main():
@@ -53,6 +67,11 @@ def main():
         print(f"Error: Not a PDF file: {pdf_path}", file=sys.stderr)
         sys.exit(1)
 
+    # Validate file content (magic bytes)
+    if not is_valid_pdf(pdf_path):
+        print(f"Error: File is not a valid PDF (invalid header): {pdf_path}", file=sys.stderr)
+        sys.exit(1)
+
     # Load rules
     rules_path = Path(args.rules) if args.rules else None
     try:
@@ -87,6 +106,11 @@ def main():
 
     # Expand ~ in destination path
     destination = Path(os.path.expanduser(result.destination))
+
+    # Defense in depth: re-validate destination path
+    if not validate_destination(result.destination, rules):
+        print(f"Error: Destination path not allowed: {result.destination}", file=sys.stderr)
+        sys.exit(1)
 
     if args.verbose or args.dry_run:
         print(f"\nClassification Result:")
