@@ -18,3 +18,8 @@ rules.json
 .beads-credential-key
 .beads/proxieddb/
 
+
+# Beads runtime locks and local credential (machine-specific)
+/.beads.gate.lock
+/.beads/*.gate.lock
+/.beads/.beads-credential-key
