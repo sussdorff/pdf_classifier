@@ -12,14 +12,5 @@ wheels/
 # Personal configuration
 rules.json
 
-# Beads / Dolt files (added by bd init)
 .dolt/
 *.db
-.beads-credential-key
-.beads/proxieddb/
-
-
-# Beads runtime locks and local credential (machine-specific)
-/.beads.gate.lock
-/.beads/*.gate.lock
-/.beads/.beads-credential-key
