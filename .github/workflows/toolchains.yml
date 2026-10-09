@@ -1,0 +1,29 @@
+name: Toolchains
+
+# The toolchains standard's check (.agents/standards/toolchains/check.md) judges
+# every toolchain declaration in the repository, and a new upstream release can
+# fail it without any change here. It therefore runs on every push and pull
+# request, without path filters.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-toolchain-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check toolchain versions against the latest releases
+        env:
+          # The check sends this token only to api.github.com, to avoid the
+          # unauthenticated rate limit when it resolves the latest releases.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .agents/standards/toolchains/scripts/check_toolchain_versions.py
