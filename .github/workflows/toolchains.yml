@@ -1,9 +1,9 @@
 name: Toolchains
 
-# The toolchains standard's check (.agents/standards/toolchains/check.md) judges
-# every toolchain declaration in the repository, and a new upstream release can
-# fail it without any change here. It therefore runs on every push and pull
-# request, without path filters.
+# The toolchains standard's check (`ccore toolchains check` from the Library
+# runtime) judges every toolchain declaration in the repository, and a new
+# upstream release can fail it without any change here. It therefore runs on
+# every push and pull request, without path filters.
 
 on:
   push:
@@ -15,15 +15,33 @@ permissions:
 
 jobs:
   check-toolchain-versions:
+    # The Library runtime comes from an authenticated package index, and GitHub
+    # withholds secrets from fork pull requests, so those skip the job. The push
+    # run on the target branch checks the change after it merges.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: latest
+      - name: Install the latest Python 3.14 patch
+        run: uv python install --upgrade 3.14
+      - name: Install the Library runtime
+        env:
+          UV_INDEX_COGNOVIS_USERNAME: ${{ github.repository_owner }}
+          UV_INDEX_COGNOVIS_PASSWORD: ${{ secrets.CI_PACKAGES_READ_TOKEN }}
+        run: |
+          uv tool install --upgrade --python 3.14 \
+            --index cognovis=https://git.cognovis.de/api/packages/cognovis/pypi/simple \
+            cognovis-library
       - name: Check toolchain versions against the latest releases
         env:
           # The check sends this token only to api.github.com, to avoid the
           # unauthenticated rate limit when it resolves the latest releases.
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 .agents/standards/toolchains/scripts/check_toolchain_versions.py
+        run: ccore toolchains check
