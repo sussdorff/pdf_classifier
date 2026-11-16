@@ -1,13 +1,19 @@
 name: Toolchains
 
 # The toolchains standard's check (`ccore toolchains check` from the Library
-# runtime) judges every toolchain declaration in the repository, and a new
-# upstream release can fail it without any change here. It therefore runs on
-# every push and pull request, without path filters.
+# runtime) judges every toolchain declaration in the repository: toolchains
+# request `latest` and images use a line tag without a digest (ADR-0037). A new
+# upstream release can fail it without any change here, so it runs without
+# path filters. On a push and a pull request the result is advisory, because
+# currency is a release gate and never a merge gate (ADR-0037); the weekly
+# scheduled run fails red when the repository is behind.
 
 on:
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -17,9 +23,10 @@ jobs:
   check-toolchain-versions:
     # The Library runtime comes from an authenticated package index, and GitHub
     # withholds secrets from fork pull requests, so those skip the job. The push
-    # run on the target branch checks the change after it merges.
+    # run on main checks the change after it merges.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
